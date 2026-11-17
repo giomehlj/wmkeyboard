@@ -71,7 +71,16 @@ jobs:
           print("patch applied")
           PY
           git diff --stat
-
+      - name: Raise import caps
+        run: |
+          csv=$(find . -name SnippetCsv.kt -path '*main*' | head -n1)
+          file=$(find . -name SnippetFile.kt -path '*main*' | head -n1)
+          grep -q 'private const val MAX_SNIPPETS = 500' "$csv" || { echo "ERROR: csv cap"; exit 1; }
+          grep -q 'private const val MAX_SNIPPETS = 500' "$file" || { echo "ERROR: file cap"; exit 1; }
+          grep -q 'private const val MAX_ROWS = 5_000' "$csv" || { echo "ERROR: rows cap"; exit 1; }
+          sed -i 's/private const val MAX_SNIPPETS = 500/private const val MAX_SNIPPETS = 5_000/' "$csv" "$file"
+          sed -i 's/private const val MAX_ROWS = 5_000/private const val MAX_ROWS = 50_000/' "$csv"
+          grep -n 'MAX_SNIPPETS =\|MAX_ROWS =' "$csv" "$file"
       - name: Assemble
         run: ./gradlew assembleIntlDebug --stacktrace
 
