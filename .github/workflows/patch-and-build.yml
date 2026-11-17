@@ -81,6 +81,56 @@ jobs:
           sed -i 's/private const val MAX_SNIPPETS = 500/private const val MAX_SNIPPETS = 5_000/' "$csv" "$file"
           sed -i 's/private const val MAX_ROWS = 5_000/private const val MAX_ROWS = 50_000/' "$csv"
           grep -n 'MAX_SNIPPETS =\|MAX_ROWS =' "$csv" "$file"
+      - name: Add snippet search box
+        run: |
+          python3 - <<'PY'
+          import glob, re, sys
+          paths = [p for p in glob.glob('**/SnippetScreens.kt', recursive=True) if '/src/main/' in p]
+          if len(paths) != 1:
+              sys.exit('ERROR: SnippetScreens.kt found %d times' % len(paths))
+          path = paths[0]
+          src = open(path, encoding='utf-8').read()
+          for name in ('wmSearch', 'wmQuery', 'wmHits'):
+              if name in src:
+                  sys.exit('ERROR: name already used: ' + name)
+          pat = re.compile(r'^([ \t]*)// The pencil is the one way into every destructive or fiddly thing a list[ \t]*$', re.M)
+          found = pat.findall(src)
+          if len(found) != 1:
+              sys.exit('ERROR: anchor found %d times' % len(found))
+          block = '''var wmSearch by rememberSaveable { mutableStateOf("") }
+          OutlinedTextField(
+              value = wmSearch,
+              onValueChange = { wmSearch = it },
+              singleLine = true,
+              label = { Text("جستجو") },
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+          )
+          val wmQuery = wmSearch.trim()
+          if (wmQuery.isNotEmpty()) {
+              val wmHits = snippets.filter { s ->
+                  s.label.contains(wmQuery, ignoreCase = true) ||
+                      s.text.contains(wmQuery, ignoreCase = true) ||
+                      (s.trigger ?: "").contains(wmQuery, ignoreCase = true) ||
+                      s.aliases.any { a -> a.contains(wmQuery, ignoreCase = true) }
+              }
+              SnippetGroup(
+                  title = "نتایج جستجو (${wmHits.size})",
+                  snippets = wmHits,
+                  empty = "چیزی پیدا نشد",
+                  onOpen = { snippet -> onNavigate("expander/edit/${snippet.id}") },
+                  onDelete = ::deleteWithUndo,
+                  onReorder = { },
+              )
+          }
+          Spacer(Modifier.height(12.dp))
+          '''
+          ind = found[0]
+          indented = ''.join((ind + l if l.strip() else l) for l in block.splitlines(True))
+          new = pat.sub(lambda m: indented + m.group(0), src, count=1)
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(new)
+          print('OK: search box added to', path)
+          PY
       - name: Assemble
         run: ./gradlew assembleIntlDebug --stacktrace
 
