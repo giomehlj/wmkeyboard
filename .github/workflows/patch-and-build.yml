@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: wasi-master/wmkeyboard
           ref: v0.6.7
 
       - name: Set up JDK 21
