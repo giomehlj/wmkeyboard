@@ -106,7 +106,7 @@ jobs:
               modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
           )
           val wmQuery = wmSearch.trim()
-          if (wmQuery.isNotEmpty()) {
+          if (wmQuery.length >= 2) {
               val wmHits = snippets.filter { s ->
                   s.label.contains(wmQuery, ignoreCase = true) ||
                       s.text.contains(wmQuery, ignoreCase = true) ||
@@ -115,7 +115,7 @@ jobs:
               }
               SnippetGroup(
                   title = "نتایج جستجو (${wmHits.size})",
-                  snippets = wmHits,
+                  snippets = wmHits.take(50),
                   empty = "چیزی پیدا نشد",
                   onOpen = { snippet -> onNavigate("expander/edit/${snippet.id}") },
                   onDelete = ::deleteWithUndo,
