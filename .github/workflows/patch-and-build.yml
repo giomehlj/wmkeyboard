@@ -1,0 +1,80 @@
+name: Patch and build
+
+on:
+  workflow_dispatch:
+
+env:
+  WMKB_ENABLE_PLAY_STORE: "false"
+  WMKB_ENABLE_GMS: "false"
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dorg.gradle.daemon=false
+
+jobs:
+  build:
+    name: Patch and assemble intl debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Apply keypad patch
+        run: |
+          python3 - <<'PY'
+          import re
+          p = "feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt"
+          s = open(p, encoding="utf-8").read()
+
+          pat1 = re.compile(
+              r"val context = snippetContext\(currentInputConnection, withSelection = false\)"
+              r"(\s*\n\s*val chips = snippetStore\.items\(\)\.asSequence\(\)"
+              r"\s*\n\s*\.filter \{ it\.trigger != null \|\| it\.triggerPattern\.isNullOrBlank\(\) \})"
+          )
+          if len(pat1.findall(s)) != 1:
+              raise SystemExit("ERROR: keypadSnippetOffer block not found exactly once")
+          s = pat1.sub(
+              lambda m: "val context by lazy { snippetContext(currentInputConnection, withSelection = false) }"
+              + m.group(1) + "\n            .filter { couldFitKeypad(it.text) }",
+              s,
+          )
+
+          pat2 = re.compile(
+              r"([ \t]*)/\*\*\s*\n\s*\* The snippets a number, phone, date or time field can take"
+          )
+          if len(pat2.findall(s)) != 1:
+              raise SystemExit("ERROR: KDoc anchor not found exactly once")
+
+          def add_fn(m):
+              i = m.group(1)
+              fn = (
+                  i + "/** False for text with a letter and no brace: it can never fit a keypad. */\n"
+                  + i + "private fun couldFitKeypad(text: String): Boolean {\n"
+                  + i + "    if (text.indexOf('{') >= 0) return true\n"
+                  + i + "    for (ch in text) if (ch.isLetter()) return false\n"
+                  + i + "    return true\n"
+                  + i + "}\n\n"
+              )
+              return fn + m.group(0)
+
+          s = pat2.sub(add_fn, s)
+          open(p, "w", encoding="utf-8").write(s)
+          print("patch applied")
+          PY
+          git diff --stat
+
+      - name: Assemble
+        run: ./gradlew assembleIntlDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-patched-intl-debug
+          path: app/build/outputs/apk/intl/debug/*.apk
+          retention-days: 7
