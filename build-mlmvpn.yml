@@ -1,0 +1,54 @@
+name: Build MLMVPN
+
+on:
+  workflow_dispatch:
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dorg.gradle.daemon=false
+
+jobs:
+  build:
+    name: Build MLMVPN debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: mlmvpn/mlmvpn_android
+          ref: main
+          lfs: true
+
+      - name: Check folders
+        run: |
+          test -d chat/build-logic || { echo "ERROR: chat/build-logic missing"; exit 1; }
+          test -d chat/TMessagesProj || { echo "ERROR: chat/TMessagesProj missing"; exit 1; }
+          ls mlm-chat || echo "NOTE: mlm-chat folder missing"
+          grep -n 'versionName' app/build.gradle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK parts
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKM" || { echo "ERROR: sdkmanager not found"; exit 1; }
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;35.0.0" || { echo "ERROR: sdk install failed"; exit 1; }
+
+      - name: Assemble
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk-mlmvpn-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
