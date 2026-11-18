@@ -42,8 +42,9 @@ jobs:
       - name: Fix media rootDir
         run: |
           F=chat/TMessagesProj_Modules/media/core_settings.gradle
-          sed -i 's|def rootDir = file(".")|def rootDir = file("chat/TMessagesProj_Modules/media")|' "$F"
+          sed -i 's|def rootDir = .*|def rootDir = new File(settingsDir, "chat/TMessagesProj_Modules/media")|' "$F"
           grep -n 'def rootDir' "$F"
+          ls chat/TMessagesProj_Modules/media/libraries/inspector | head -3
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
