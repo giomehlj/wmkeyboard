@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: mlmvpn/mlmvpn_android
-          ref: main
+          ref: v1.2.49
           lfs: true
 
       - name: Check folders
@@ -35,16 +35,6 @@ jobs:
           sed -i '/org.gradle.java.home/d' gradle.properties
           grep -n 'java.home' gradle.properties || echo "java.home line removed"
 
-      - name: Create missing test_data folder
-        run: |
-          mkdir -p chat/TMessagesProj_Modules/media/libraries/test_data
-          ls -d chat/TMessagesProj_Modules/media/libraries/test_data
-      - name: Fix media rootDir
-        run: |
-          F=chat/TMessagesProj_Modules/media/core_settings.gradle
-          sed -i 's|def rootDir = .*|def rootDir = new File(settingsDir, "chat/TMessagesProj_Modules/media")|' "$F"
-          grep -n 'def rootDir' "$F"
-          ls chat/TMessagesProj_Modules/media/libraries/inspector | head -3
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
