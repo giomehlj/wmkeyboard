@@ -230,12 +230,26 @@ jobs:
               f.write(src[:start] + body + src[end:])
           print('OK: pages and sort added to', path)
           PY
+      - name: Create signing key
+        env:
+          WM_KEYSTORE_B64: ${{ secrets.WM_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$WM_KEYSTORE_B64" ]; then echo "ERROR: secret WM_KEYSTORE_B64 is empty"; exit 1; fi
+          echo "$WM_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wm.jks"
+
       - name: Assemble
-        run: ./gradlew assembleIntlDebug --stacktrace
+        run: |
+          ./gradlew assembleIntlRelease \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/wm.jks" \
+            -Pandroid.injected.signing.store.password=wmkb1234 \
+            -Pandroid.injected.signing.key.alias=wm \
+            -Pandroid.injected.signing.key.password=wmkb1234 \
+            --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: apk-patched-intl-debug
-          path: app/build/outputs/apk/intl/debug/*.apk
+          name: apk-patched-intl-release
+          path: app/build/outputs/apk/intl/release/*.apk
           retention-days: 7
