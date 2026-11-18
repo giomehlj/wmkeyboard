@@ -247,9 +247,12 @@ jobs:
             -Pandroid.injected.signing.key.password=wmkb1234 \
             --stacktrace
 
+      - name: List APK files
+        run: find . -name '*.apk' -path '*build/outputs*' -exec ls -lh {} \;
+
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: apk-patched-intl-release
-          path: app/build/outputs/apk/intl/release/*.apk
+          path: "**/build/outputs/apk/**/*.apk"
           retention-days: 7
