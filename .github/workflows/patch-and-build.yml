@@ -34,7 +34,6 @@ jobs:
           import re
           p = "feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt"
           s = open(p, encoding="utf-8").read()
-
           pat1 = re.compile(
               r"val context = snippetContext\(currentInputConnection, withSelection = false\)"
               r"(\s*\n\s*val chips = snippetStore\.items\(\)\.asSequence\(\)"
@@ -47,13 +46,11 @@ jobs:
               + m.group(1) + "\n            .filter { couldFitKeypad(it.text) }",
               s,
           )
-
           pat2 = re.compile(
               r"([ \t]*)/\*\*\s*\n\s*\* The snippets a number, phone, date or time field can take"
           )
           if len(pat2.findall(s)) != 1:
               raise SystemExit("ERROR: KDoc anchor not found exactly once")
-
           def add_fn(m):
               i = m.group(1)
               fn = (
@@ -65,7 +62,6 @@ jobs:
                   + i + "}\n\n"
               )
               return fn + m.group(0)
-
           s = pat2.sub(add_fn, s)
           open(p, "w", encoding="utf-8").write(s)
           print("patch applied")
@@ -107,11 +103,25 @@ jobs:
           )
           val wmQuery = wmSearch.trim()
           if (wmQuery.length >= 2) {
-              val wmHits = snippets.filter { s ->
-                  s.label.contains(wmQuery, ignoreCase = true) ||
-                      s.text.contains(wmQuery, ignoreCase = true) ||
-                      (s.trigger ?: "").contains(wmQuery, ignoreCase = true) ||
-                      s.aliases.any { a -> a.contains(wmQuery, ignoreCase = true) }
+              val wmHits = remember(snippets, wmQuery) {
+                  val wmNorm = { t: String ->
+                      t.lowercase()
+                          .replace('ي', 'ی')
+                          .replace('ك', 'ک')
+                          .map { c -> if (c.isLetterOrDigit()) c else ' ' }
+                          .joinToString("")
+                          .replace(Regex(" +"), " ")
+                          .trim()
+                  }
+                  val wmNeedle = " " + wmNorm(wmQuery)
+                  val wmStarts = { f: String -> (" " + wmNorm(f)).contains(wmNeedle) }
+                  val wmHitCollator = java.text.Collator.getInstance(java.util.Locale("fa"))
+                  snippets.filter { s ->
+                      wmStarts(s.label) ||
+                          wmStarts(s.text) ||
+                          wmStarts(s.trigger ?: "") ||
+                          s.aliases.any { a -> wmStarts(a) }
+                  }.sortedWith(compareBy(wmHitCollator) { it.label.ifBlank { it.text } })
               }
               SnippetGroup(
                   title = "نتایج جستجو (${wmHits.size})",
@@ -131,7 +141,7 @@ jobs:
               f.write(new)
           print('OK: search box added to', path)
           PY
-      - name: Add snippet pages
+      - name: Add snippet pages and alphabetical sort
         run: |
           python3 - <<'PY'
           import glob, re, sys
@@ -140,7 +150,7 @@ jobs:
               sys.exit('ERROR: SnippetScreens.kt found %d times' % len(paths))
           path = paths[0]
           src = open(path, encoding='utf-8').read()
-          for name in ('wmPage', 'wmPages', 'wmPageSafe', 'wmShown', 'wmPager'):
+          for name in ('wmPage', 'wmPages', 'wmPageSafe', 'wmShown', 'wmPager', 'wmAlpha', 'wmCollator', 'wmSorted', 'wmList', 'wmSortRow'):
               if name in src:
                   sys.exit('ERROR: name already used: ' + name)
           sig = 'private fun SnippetGroup('
@@ -165,10 +175,24 @@ jobs:
           if not stripped.endswith(tail):
               sys.exit('ERROR: end of SnippetGroup is not as expected')
           trailing = body[len(stripped):]
-          defs = '''var wmPage by rememberSaveable(title) { mutableStateOf(0) }
-          val wmPages = maxOf(1, (snippets.size + 499) / 500)
+          defs = '''var wmAlpha by rememberSaveable(title) { mutableStateOf(false) }
+          val wmCollator = java.text.Collator.getInstance(java.util.Locale("fa"))
+          val wmSorted = remember(snippets) {
+              snippets.sortedWith(compareBy(wmCollator) { it.label.ifBlank { it.text } })
+          }
+          val wmList = if (wmAlpha) wmSorted else snippets
+          var wmPage by rememberSaveable(title) { mutableStateOf(0) }
+          val wmPages = maxOf(1, (wmList.size + 499) / 500)
           val wmPageSafe = wmPage.coerceIn(0, wmPages - 1)
-          val wmShown = snippets.drop(wmPageSafe * 500).take(500)
+          val wmShown = wmList.drop(wmPageSafe * 500).take(500)
+          val wmSortRow: @Composable () -> Unit = {
+              if (snippets.size > 1) {
+                  androidx.compose.material3.TextButton(
+                      onClick = { wmAlpha = !wmAlpha },
+                      modifier = Modifier.padding(horizontal = 8.dp),
+                  ) { Text(if (wmAlpha) "ترتیب الفبایی: روشن" else "ترتیب الفبایی: خاموش") }
+              }
+          }
           val wmPager: @Composable () -> Unit = {
               if (snippets.size > 500) {
                   androidx.compose.foundation.layout.Row(
@@ -192,11 +216,11 @@ jobs:
           m = re.search(can_pat, body, flags=re.M)
           ind = m.group(1)
           indented = ''.join((ind + l if l.strip() else l) for l in defs.splitlines(True))
-          body = (body[:m.start()] + ind + 'val canEdit = snippets.size in 2..500\n'
-                  + indented.rstrip('\n') + body[m.end():])
+          body = (body[:m.start()] + indented + ind + 'val canEdit = !wmAlpha && snippets.size in 2..500'
+                  + body[m.end():])
           body = re.sub(
               for_pat,
-              lambda mm: mm.group(1) + 'item { wmPager() }\n' + mm.group(1) + 'for (snippet in wmShown) {',
+              lambda mm: mm.group(1) + 'item { wmSortRow() }\n' + mm.group(1) + 'item { wmPager() }\n' + mm.group(1) + 'for (snippet in wmShown) {',
               body, count=1, flags=re.M)
           stripped = body.rstrip()
           if not stripped.endswith(tail):
@@ -204,14 +228,28 @@ jobs:
           body = stripped[:-len(tail)] + '\n        item { wmPager() }' + tail + trailing
           with open(path, 'w', encoding='utf-8') as f:
               f.write(src[:start] + body + src[end:])
-          print('OK: pages added to', path)
+          print('OK: pages and sort added to', path)
           PY
+      - name: Create signing key
+        env:
+          WM_KEYSTORE_B64: ${{ secrets.WM_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$WM_KEYSTORE_B64" ]; then echo "ERROR: secret WM_KEYSTORE_B64 is empty"; exit 1; fi
+          echo "$WM_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wm.jks"
+
       - name: Assemble
-        run: ./gradlew assembleIntlDebug --stacktrace
+        run: |
+          ./gradlew assembleIntlRelease \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/wm.jks" \
+            -Pandroid.injected.signing.store.password=wmkb1234 \
+            -Pandroid.injected.signing.key.alias=wm \
+            -Pandroid.injected.signing.key.password=wmkb1234 \
+            --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: apk-patched-intl-debug
-          path: app/build/outputs/apk/intl/debug/*.apk
+          name: apk-patched-intl-release
+          path: app/build/outputs/apk/intl/release/*.apk
           retention-days: 7
