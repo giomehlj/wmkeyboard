@@ -30,7 +30,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
+      - name: Remove Windows Java path
+        run: |
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          grep -n 'java.home' gradle.properties || echo "java.home line removed"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
