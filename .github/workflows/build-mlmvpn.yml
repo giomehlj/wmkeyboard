@@ -34,6 +34,12 @@ jobs:
         run: |
           sed -i '/org.gradle.java.home/d' gradle.properties
           grep -n 'java.home' gradle.properties || echo "java.home line removed"
+
+      - name: Create missing test_data folder
+        run: |
+          mkdir -p chat/TMessagesProj_Modules/media/libraries/test_data
+          ls -d chat/TMessagesProj_Modules/media/libraries/test_data
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
