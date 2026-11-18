@@ -38,6 +38,10 @@ jobs:
         run: |
           mkdir -p chat/TMessagesProj_Modules/media/libraries/test_data
           ls -d chat/TMessagesProj_Modules/media/libraries/test_data
+      - name: Link TMessagesProj_Modules to root
+        run: |
+          ln -s chat/TMessagesProj_Modules TMessagesProj_Modules
+          ls -d TMessagesProj_Modules/media
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
