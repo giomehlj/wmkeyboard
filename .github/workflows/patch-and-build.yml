@@ -143,9 +143,10 @@ jobs:
           for name in ('wmPage', 'wmPages', 'wmPageSafe', 'wmShown', 'wmPager'):
               if name in src:
                   sys.exit('ERROR: name already used: ' + name)
-          if src.count('private fun SnippetGroup(') != 1:
+          sig = 'private fun SnippetGroup('
+          if src.count(sig) != 1:
               sys.exit('ERROR: SnippetGroup definition not found exactly once')
-          start = src.find('private fun SnippetGroup(')
+          start = src.find(sig)
           marker = '/** One snippet in the Text Expander list'
           if src.count(marker) != 1:
               sys.exit('ERROR: end marker not found exactly once')
@@ -153,12 +154,9 @@ jobs:
           if end < 0:
               sys.exit('ERROR: end marker is before SnippetGroup')
           body = src[start:end]
-          pick_pat = r'^([ \t]*)val picking = livePicked\.isNotEmpty\(\) && !editing[ \t]*$'
-          for pat, what in (
-              (pick_pat, 'picking line'),
-              (r'^[ \t]*for \(snippet in snippets\) \{[ \t]*$', 'for loop'),
-              (r'ReorderableColumn\(\s*\n\s*snippets,', 'ReorderableColumn'),
-          ):
+          can_pat = r'^([ \t]*)val canEdit = snippets\.size > 1[ \t]*$'
+          for_pat = r'^([ \t]*)for \(snippet in snippets\) \{[ \t]*$'
+          for pat, what in ((can_pat, 'canEdit line'), (for_pat, 'for loop')):
               n = len(re.findall(pat, body, flags=re.M))
               if n != 1:
                   sys.exit('ERROR: %s found %d times' % (what, n))
@@ -191,18 +189,15 @@ jobs:
               }
           }
           '''
-          m = re.search(pick_pat, body, flags=re.M)
+          m = re.search(can_pat, body, flags=re.M)
           ind = m.group(1)
           indented = ''.join((ind + l if l.strip() else l) for l in defs.splitlines(True))
-          body = body[:m.end()] + '\n' + indented.rstrip('\n') + body[m.end():]
+          body = (body[:m.start()] + ind + 'val canEdit = snippets.size in 2..500\n'
+                  + indented.rstrip('\n') + body[m.end():])
           body = re.sub(
-              r'^([ \t]*)for \(snippet in snippets\) \{[ \t]*$',
+              for_pat,
               lambda mm: mm.group(1) + 'item { wmPager() }\n' + mm.group(1) + 'for (snippet in wmShown) {',
               body, count=1, flags=re.M)
-          body = re.sub(
-              r'(ReorderableColumn\(\s*\n\s*)snippets,',
-              lambda mm: mm.group(1) + 'wmShown,',
-              body, count=1)
           stripped = body.rstrip()
           if not stripped.endswith(tail):
               sys.exit('ERROR: end of SnippetGroup changed unexpectedly')
