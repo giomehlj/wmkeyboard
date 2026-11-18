@@ -131,7 +131,7 @@ jobs:
               f.write(new)
           print('OK: search box added to', path)
           PY
-         - name: Add snippet pages
+      - name: Add snippet pages
         run: |
           python3 - <<'PY'
           import glob, re, sys
