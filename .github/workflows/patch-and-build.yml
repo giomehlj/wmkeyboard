@@ -131,6 +131,86 @@ jobs:
               f.write(new)
           print('OK: search box added to', path)
           PY
+         - name: Add snippet pages
+        run: |
+          python3 - <<'PY'
+          import glob, re, sys
+          paths = [p for p in glob.glob('**/SnippetScreens.kt', recursive=True) if '/src/main/' in p]
+          if len(paths) != 1:
+              sys.exit('ERROR: SnippetScreens.kt found %d times' % len(paths))
+          path = paths[0]
+          src = open(path, encoding='utf-8').read()
+          for name in ('wmPage', 'wmPages', 'wmPageSafe', 'wmShown', 'wmPager'):
+              if name in src:
+                  sys.exit('ERROR: name already used: ' + name)
+          if src.count('private fun SnippetGroup(') != 1:
+              sys.exit('ERROR: SnippetGroup definition not found exactly once')
+          start = src.find('private fun SnippetGroup(')
+          marker = '/** One snippet in the Text Expander list'
+          if src.count(marker) != 1:
+              sys.exit('ERROR: end marker not found exactly once')
+          end = src.find(marker, start)
+          if end < 0:
+              sys.exit('ERROR: end marker is before SnippetGroup')
+          body = src[start:end]
+          pick_pat = r'^([ \t]*)val picking = livePicked\.isNotEmpty\(\) && !editing[ \t]*$'
+          for pat, what in (
+              (pick_pat, 'picking line'),
+              (r'^[ \t]*for \(snippet in snippets\) \{[ \t]*$', 'for loop'),
+              (r'ReorderableColumn\(\s*\n\s*snippets,', 'ReorderableColumn'),
+          ):
+              n = len(re.findall(pat, body, flags=re.M))
+              if n != 1:
+                  sys.exit('ERROR: %s found %d times' % (what, n))
+          tail = '\n    }\n}'
+          stripped = body.rstrip()
+          if not stripped.endswith(tail):
+              sys.exit('ERROR: end of SnippetGroup is not as expected')
+          trailing = body[len(stripped):]
+          defs = '''var wmPage by rememberSaveable(title) { mutableStateOf(0) }
+          val wmPages = maxOf(1, (snippets.size + 499) / 500)
+          val wmPageSafe = wmPage.coerceIn(0, wmPages - 1)
+          val wmShown = snippets.drop(wmPageSafe * 500).take(500)
+          val wmPager: @Composable () -> Unit = {
+              if (snippets.size > 500) {
+                  androidx.compose.foundation.layout.Row(
+                      modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                      horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                      verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                  ) {
+                      androidx.compose.material3.TextButton(
+                          onClick = { wmPage = wmPageSafe - 1 },
+                          enabled = wmPageSafe > 0,
+                      ) { Text("قبلی") }
+                      Text("صفحه ${wmPageSafe + 1} از $wmPages")
+                      androidx.compose.material3.TextButton(
+                          onClick = { wmPage = wmPageSafe + 1 },
+                          enabled = wmPageSafe < wmPages - 1,
+                      ) { Text("بعدی") }
+                  }
+              }
+          }
+          '''
+          m = re.search(pick_pat, body, flags=re.M)
+          ind = m.group(1)
+          indented = ''.join((ind + l if l.strip() else l) for l in defs.splitlines(True))
+          body = body[:m.end()] + '\n' + indented.rstrip('\n') + body[m.end():]
+          body = re.sub(
+              r'^([ \t]*)for \(snippet in snippets\) \{[ \t]*$',
+              lambda mm: mm.group(1) + 'item { wmPager() }\n' + mm.group(1) + 'for (snippet in wmShown) {',
+              body, count=1, flags=re.M)
+          body = re.sub(
+              r'(ReorderableColumn\(\s*\n\s*)snippets,',
+              lambda mm: mm.group(1) + 'wmShown,',
+              body, count=1)
+          stripped = body.rstrip()
+          if not stripped.endswith(tail):
+              sys.exit('ERROR: end of SnippetGroup changed unexpectedly')
+          body = stripped[:-len(tail)] + '\n        item { wmPager() }' + tail + trailing
+          with open(path, 'w', encoding='utf-8') as f:
+              f.write(src[:start] + body + src[end:])
+          print('OK: pages added to', path)
+          PY
       - name: Assemble
         run: ./gradlew assembleIntlDebug --stacktrace
 
