@@ -250,16 +250,38 @@ jobs:
       - name: Find APK files
         if: always()
         run: |
-          echo "=== all apk/aab files ==="
-          find . \( -name '*.apk' -o -name '*.aab' \) -not -path './.git/*' -exec ls -lh {} \;
-          echo "=== outputs folder ==="
-          ls -R app/build/outputs 2>&1 | head -n 50
+          echo "=== all apk files ==="
+          find . -name '*.apk' -not -path './.git/*' -exec ls -lh {} \;
+
+      - name: Sign APK
+        run: |
+          apk=$(find . \( -path '*/build/outputs/apk/*' -o -path '*/build/intermediates/apk/*' \) -name '*.apk' | grep -i intl | grep -i release | head -n1)
+          if [ -z "$apk" ]; then echo "ERROR: no release apk found"; exit 1; fi
+          echo "Using: $apk"
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          bt=$(ls -d "$sdk"/build-tools/* | sort -V | tail -n1)
+          echo "Build tools: $bt"
+          mkdir -p signed
+          "$bt/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" sign \
+            --ks "$RUNNER_TEMP/wm.jks" \
+            --ks-pass pass:wmkb1234 \
+            --ks-key-alias wm \
+            --key-pass pass:wmkb1234 \
+            --v4-signing-enabled false \
+            --out signed/wm-keyboard-intl-release.apk \
+            "$RUNNER_TEMP/aligned.apk"
+          "$bt/apksigner" verify --verbose signed/wm-keyboard-intl-release.apk | head -n 8
+          ls -lh signed
+          echo "=== native libs per ABI (count) ==="
+          unzip -l signed/wm-keyboard-intl-release.apk | grep -o 'lib/[^/]*/' | sort | uniq -c
+          echo "=== 15 biggest files inside ==="
+          unzip -l signed/wm-keyboard-intl-release.apk | sort -k1 -n -r | head -n 15
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: apk-patched-intl-release
-          path: |
-            **/*.apk
+          path: signed/*.apk
           if-no-files-found: error
           retention-days: 7
