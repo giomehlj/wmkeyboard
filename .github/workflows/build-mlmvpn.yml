@@ -247,12 +247,21 @@ jobs:
             -Pandroid.injected.signing.key.password=wmkb1234 \
             --stacktrace
 
-      - name: List APK files
-        run: find . -name '*.apk' -path '*build/outputs*' -exec ls -lh {} \;
+      - name: Find APK files
+        if: always()
+        run: |
+          echo "=== all apk/aab files ==="
+          find . \( -name '*.apk' -o -name '*.aab' \) -not -path './.git/*' -exec ls -lh {} \;
+          echo "=== outputs folder ==="
+          ls -R app/build/outputs 2>&1 | head -n 50
+          echo "=== gradle output settings ==="
+          grep -rn "outputFileName\|buildDirectory\|destinationDirectory" --include=*.kts --include=*.gradle . | head -n 30
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: apk-patched-intl-release
-          path: "**/build/outputs/apk/**/*.apk"
+          path: |
+            **/*.apk
+          if-no-files-found: error
           retention-days: 7
