@@ -11,8 +11,8 @@ env:
 jobs:
   build:
     name: Patch and assemble intl debug
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -254,8 +254,6 @@ jobs:
           find . \( -name '*.apk' -o -name '*.aab' \) -not -path './.git/*' -exec ls -lh {} \;
           echo "=== outputs folder ==="
           ls -R app/build/outputs 2>&1 | head -n 50
-          echo "=== gradle output settings ==="
-          grep -rn "outputFileName\|buildDirectory\|destinationDirectory" --include=*.kts --include=*.gradle . | head -n 30
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
