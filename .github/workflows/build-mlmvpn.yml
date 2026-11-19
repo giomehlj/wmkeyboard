@@ -278,6 +278,26 @@ jobs:
           echo "=== 15 biggest files inside ==="
           unzip -l signed/wm-keyboard-intl-release.apk | sort -k1 -n -r | head -n 15
 
+      - name: Check APK
+        if: always()
+        run: |
+          set +e
+          apk=signed/wm-keyboard-intl-release.apk
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          bt=$(ls -d "$sdk"/build-tools/* | sort -V | tail -n1)
+          echo "=== badging ==="
+          "$bt/aapt2" dump badging "$apk" | grep -E "^package|sdkVersion|targetSdkVersion|native-code|testOnly|debuggable" | cut -c1-200
+          echo "=== resources.arsc: method / size ==="
+          unzip -v "$apk" resources.arsc | tail -n 3
+          echo "=== alignment check ==="
+          "$bt/zipalign" -c -v 4 "$apk" | grep -i -E "arsc|Verification"
+          echo "=== number of resource configurations ==="
+          "$bt/aapt2" dump configurations "$apk" | wc -l
+          "$bt/aapt2" dump configurations "$apk" | head -n 12
+          echo "=== biggest res folders (uncompressed bytes) ==="
+          unzip -l "$apk" | awk '$4 ~ /^res\// {split($4,a,"/"); d[a[2]]+=$1} END {for (k in d) print d[k], k}' | sort -n -r | head -n 10
+          exit 0
+
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
