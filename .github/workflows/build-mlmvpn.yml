@@ -117,10 +117,7 @@ jobs:
                   val wmStarts = { f: String -> (" " + wmNorm(f)).contains(wmNeedle) }
                   val wmHitCollator = java.text.Collator.getInstance(java.util.Locale("fa"))
                   snippets.filter { s ->
-                      wmStarts(s.label) ||
-                          wmStarts(s.text) ||
-                          wmStarts(s.trigger ?: "") ||
-                          s.aliases.any { a -> wmStarts(a) }
+                      wmStarts(s.label.ifBlank { s.text })
                   }.sortedWith(compareBy(wmHitCollator) { it.label.ifBlank { it.text } })
               }
               SnippetGroup(
@@ -230,6 +227,35 @@ jobs:
               f.write(src[:start] + body + src[end:])
           print('OK: pages and sort added to', path)
           PY
+      - name: Bump version code
+        run: |
+          python3 - <<'PY'
+          import glob, os, re, sys
+          new = 200000 + int(os.environ["GITHUB_RUN_NUMBER"])
+          pat = re.compile(r'(versionCode\s*=?\s*["\']?)(\d[\d_]*)')
+          exts = ('.kts', '.gradle', '.toml', '.properties')
+          changed = 0
+          for p in glob.glob('**/*', recursive=True):
+              if not p.endswith(exts) or '/build/' in p or not os.path.isfile(p):
+                  continue
+              try:
+                  s = open(p, encoding='utf-8').read()
+              except Exception:
+                  continue
+              if 'versionCode' not in s:
+                  continue
+              print('found in', p)
+              for line in s.splitlines():
+                  if 'versionCode' in line:
+                      print('   ', line.strip())
+              s2, n = pat.subn(lambda m: m.group(1) + str(new), s)
+              if n:
+                  open(p, 'w', encoding='utf-8').write(s2)
+                  changed += n
+          if changed == 0:
+              sys.exit('ERROR: no numeric versionCode found')
+          print('versionCode set to', new, 'in', changed, 'place(s)')
+          PY
       - name: Create signing key
         env:
           WM_KEYSTORE_B64: ${{ secrets.WM_KEYSTORE_B64 }}
@@ -277,26 +303,6 @@ jobs:
           unzip -l signed/wm-keyboard-intl-release.apk | grep -o 'lib/[^/]*/' | sort | uniq -c
           echo "=== 15 biggest files inside ==="
           unzip -l signed/wm-keyboard-intl-release.apk | sort -k1 -n -r | head -n 15
-
-      - name: Check APK
-        if: always()
-        run: |
-          set +e
-          apk=signed/wm-keyboard-intl-release.apk
-          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          bt=$(ls -d "$sdk"/build-tools/* | sort -V | tail -n1)
-          echo "=== badging ==="
-          "$bt/aapt2" dump badging "$apk" | grep -E "^package|sdkVersion|targetSdkVersion|native-code|testOnly|debuggable" | cut -c1-200
-          echo "=== resources.arsc: method / size ==="
-          unzip -v "$apk" resources.arsc | tail -n 3
-          echo "=== alignment check ==="
-          "$bt/zipalign" -c -v 4 "$apk" | grep -i -E "arsc|Verification"
-          echo "=== number of resource configurations ==="
-          "$bt/aapt2" dump configurations "$apk" | wc -l
-          "$bt/aapt2" dump configurations "$apk" | head -n 12
-          echo "=== biggest res folders (uncompressed bytes) ==="
-          unzip -l "$apk" | awk '$4 ~ /^res\// {split($4,a,"/"); d[a[2]]+=$1} END {for (k in d) print d[k], k}' | sort -n -r | head -n 10
-          exit 0
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
